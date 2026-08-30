@@ -2,16 +2,16 @@
   "claims": [
     {
       "name": "services",
-      "note": "The number of services we say we run, against the pages that exist.",
+      "note": "How many services we say we run, against the pages that exist.",
       "pattern": "\\b(\\d+)\\s+(?:servizi|services)\\b",
-      "truth": "ls -d site/services/*/ | wc -l",
-      "paths": ["site/**/*.php", "site/**/*.md", "README.md"]
+      "truth": { "type": "files", "glob": "site/services/*", "directories": true },
+      "paths": ["site/**/*.php", "README.md"]
     },
     {
       "name": "agents",
       "note": "A count that used to be typed into a rulebook. Now it is read.",
       "pattern": "\\b(\\d+)\\s+(?:agenti|agents)\\b",
-      "truth": "curl -sf https://example.internal/api/agents | jq '.count'",
+      "truth": { "type": "json", "file": "build/agents.json", "path": "count" },
       "paths": ["docs/**/*.md"]
     }
   ]

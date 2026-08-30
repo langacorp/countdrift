@@ -51,6 +51,24 @@ countdrift --selftest
 The third one is the point. A check that could not read its source and reports
 green is worse than no check: it is a green that means *nothing was measured*.
 
+## Trust boundary
+
+A claims file says where the truth lives. If that means *a shell command*, the
+file is as dangerous as the machine that runs it: in CI, whoever can edit
+`claims.json` can run anything.
+
+So **nothing executes by default.** The `files`, `lines` and `json` sources
+read; they do not run, and they cover most claims. A shell command has to be
+asked for **twice** — `{"type": "shell"}` in the file *and* `--allow-exec` on
+the command line — because that is a decision, not a default.
+
+```
+  ?  legacy   this claim runs a shell command; pass --allow-exec to permit it
+```
+
+A claims file that arrives in a pull request should never be run with
+`--allow-exec`.
+
 ## Configuration
 
 ```json
@@ -59,15 +77,24 @@ green is worse than no check: it is a green that means *nothing was measured*.
     {
       "name": "services",
       "pattern": "\\b(\\d+)\\s+services\\b",
-      "truth": "ls -d site/services/*/ | wc -l",
+      "truth": { "type": "files", "glob": "site/services/*", "directories": true },
       "paths": ["site/**/*.php", "README.md"]
     }
   ]
 }
 ```
 
-`pattern` needs one capture group: the number. `truth` is any command whose
-output contains one. See `example.json`.
+`pattern` needs one capture group: the number.
+
+| `truth.type` | reads | keys |
+|---|---|---|
+| `files` | how many paths match a glob | `glob`, `directories` |
+| `lines` | how many lines of a file match | `file`, `match` |
+| `json` | a number at a dotted path | `file`, `path` |
+| `shell` | **runs a command** — needs `--allow-exec` | `command`, `timeout` |
+
+A plain string instead of an object still works and is treated as `shell`, so
+older files keep running — behind `--allow-exec`, never silently.
 
 ## What it is not
 
