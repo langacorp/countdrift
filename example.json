@@ -1,0 +1,18 @@
+{
+  "claims": [
+    {
+      "name": "services",
+      "note": "The number of services we say we run, against the pages that exist.",
+      "pattern": "\\b(\\d+)\\s+(?:servizi|services)\\b",
+      "truth": "ls -d site/services/*/ | wc -l",
+      "paths": ["site/**/*.php", "site/**/*.md", "README.md"]
+    },
+    {
+      "name": "agents",
+      "note": "A count that used to be typed into a rulebook. Now it is read.",
+      "pattern": "\\b(\\d+)\\s+(?:agenti|agents)\\b",
+      "truth": "curl -sf https://example.internal/api/agents | jq '.count'",
+      "paths": ["docs/**/*.md"]
+    }
+  ]
+}
