@@ -107,7 +107,7 @@ Python 3.9+, no dependencies.
 
 ## Where this comes from
 
-LANGA runs 16 digital services across 5 networks on its own infrastructure.
+LANGA runs an ecosystem of digital services on its own infrastructure.
 This tool came out of a rule we had to correct in our own rulebook: **the
 number does not get written here, it gets read from the source.**
 
