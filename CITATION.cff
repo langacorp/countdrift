@@ -1,0 +1,15 @@
+cff-version: 1.2.0
+message: If you use this software, please cite it as below.
+type: software
+title: "countdrift"
+abstract: "Find numbers written by hand that no longer match their source. Three outcomes: matched, drifted, or the source did not answer — and the third is the point."
+authors:
+  - name: "LANGA Corp. Srl"
+    city: Milan
+    country: IT
+    website: "https://langa.tv"
+repository-code: "https://github.com/langacorp/countdrift"
+url: "https://github.com/langacorp/countdrift"
+license: MIT
+version: "1.1.0"
+date-released: "2026-08-30"
