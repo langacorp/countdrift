@@ -10,8 +10,9 @@ wrong. Nothing flags it, because nothing is empty.
 
 ## The defect it was born from
 
-**2026-08-30.** A rulebook of ours had a line reading *"AI agents in production
-(32 total)"*. The registry it describes returned **72**.
+**2026-08-30.** A rulebook of ours declared, as a plain figure, how many AI agents
+were in production. The registry it describes returned a different number — and the
+two were not even counting the same kind of thing.
 
 The number had been typed once and never read again. From that line it had
 spread: into two public articles, and into the markup of a status panel that
@@ -28,9 +29,10 @@ You declare pairs: a number as it is **written**, and a command that knows the
 one is right is a decision, and decisions are not a tool's job.
 
 ```bash
-countdrift claims.json
-countdrift claims.json --json
-countdrift --selftest
+curl -O https://raw.githubusercontent.com/langacorp/countdrift/main/countdrift.py
+python3 countdrift.py claims.json
+python3 countdrift.py claims.json --json
+python3 countdrift.py --selftest
 ```
 
 ```
@@ -104,6 +106,26 @@ the pages are missing, not the claim. Choosing is a decision; this only says
 where to look.
 
 Python 3.9+, no dependencies.
+
+## The other tools
+
+Each came out of a defect measured on our own estate. Each one is standalone
+and depends on none of the others.
+
+- **[realroute](https://github.com/langacorp/realroute)** — checks that a route
+  really exists, by content and not by status code.
+- **[leakform](https://github.com/langacorp/leakform)** — finds secrets in a git
+  repository by shape, across every ref.
+- **[samecheck](https://github.com/langacorp/samecheck)** — measures whether the
+  copies that should be identical still are, and never says which one is right.
+- **[provenreal](https://github.com/langacorp/provenreal)** — compares what a
+  system claims with what can be measured, from independent sources.
+- **[kemproof](https://github.com/langacorp/kemproof)** — attests that an
+  ML-KEM-768 key exchange really happened. It does not encrypt anything.
+
+The set is kept on the [organisation profile](https://github.com/langacorp).
+It is not written here as a count, because a number typed by hand is the thing
+countdrift exists to find.
 
 ## Where this comes from
 
