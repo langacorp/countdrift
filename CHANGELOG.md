@@ -1,9 +1,16 @@
 # Changelog
 
 All notable changes to this project are recorded here.
-Dates are the date of the commit, not of a release.
+Each entry is a release. The heading carries the tag and the date the release
+was published. Work that is tagged but never released says so.
 
-## v1.1.0 - 2026-08-30
+## Unreleased
+
+- Add CITATION.cff: make this tool citable in a bibliography
+- README: drop both figures, keep the case, and show an invocation that works
+- README: stop writing counts that will change
+
+## v1.1.0 — 2026-08-30
 
 - **Nothing executes by default.** A claims file used to mean shell commands,
   which made it as dangerous as the machine running it: in CI, whoever could
