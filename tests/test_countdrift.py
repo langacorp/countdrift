@@ -545,3 +545,14 @@ class Output(InTempDir):
                                 "--json", encoding="utf-8")
         data = json.loads(r.stdout.decode("utf-8"))
         self.assertIn("—", data["claims"][0]["divergenti"][0]["contesto"])
+
+
+class OneVersion(unittest.TestCase):
+    """The version is written in two files; they must say the same."""
+
+    def test_citation_matches_the_module(self):
+        import re
+        text = (ROOT / "CITATION.cff").read_text(encoding="utf-8")
+        m = re.search(r'(?m)^version:\s*"?([^"\s]+)"?\s*$', text)
+        self.assertIsNotNone(m, "no version in CITATION.cff")
+        self.assertEqual(m.group(1), countdrift.__version__)
