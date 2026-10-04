@@ -409,3 +409,102 @@ class SourceFailuresStayContained(InTempDir):
         self.assertEqual(code, 2)
         self.assertEqual(data["divergenti"], 1)
         self.assertEqual(data["non_misurabili"], 1)
+
+
+class WrittenSide(InTempDir):
+    """Where the number is written: every place, once, at the right line."""
+
+    def test_pattern_without_capture_group_is_a_config_error(self):
+        # It used to find nothing, report OK and exit 0.
+        self.touch(3)
+        self.write("page.md", "We run 22 services.\n")
+        cfg = self.config(files_claim(pattern=r"\d+ services"))
+        code, out, err = self.run_cli(cfg)
+        self.assertEqual(code, 2)
+        self.assertIn("capture group", err)
+
+    def test_paths_entry_that_matches_no_file_is_unmeasurable(self):
+        # A typo in "paths" used to read as "written in 0 places", exit 0.
+        self.touch(3)
+        self.write("page.md", "We run 22 services.\n")
+        code, data, _ = self.run_json(self.config(files_claim(paths=["pgae.md"])))
+        self.assertEqual(code, 2)
+        self.assertIn("pgae.md", data["claims"][0]["motivo"])
+
+    def test_number_absent_from_existing_files_is_still_ok(self):
+        self.touch(3)
+        self.write("page.md", "No count here.\n")
+        code, data, _ = self.run_json(self.config(files_claim()))
+        self.assertEqual(code, 0)
+        self.assertEqual(data["claims"][0]["occorrenze"], 0)
+
+    def test_paths_must_be_a_list_of_relative_globs(self):
+        for paths in ("page.md", ["/etc/*.conf"], [3]):
+            claim = files_claim()
+            claim["paths"] = paths
+            code, _, err = self.run_cli(self.config(claim))
+            self.assertEqual(code, 2, paths)
+            self.assertIn("paths", err)
+            self.assertNotIn("Traceback", err)
+
+    def test_overlapping_paths_count_a_line_once(self):
+        self.touch(3)
+        self.write("page.md", "We run 22 services.\n")
+        code, data, _ = self.run_json(
+            self.config(files_claim(paths=["page.md", "*.md"])))
+        self.assertEqual(code, 1)
+        self.assertEqual(data["claims"][0]["occorrenze"], 1)
+        self.assertEqual(len(data["claims"][0]["divergenti"]), 1)
+
+    def test_optional_group_that_did_not_match_is_skipped(self):
+        self.touch(3)
+        self.write("page.md", "services\nWe run 3 services.\n")
+        code, data, err = self.run_json(
+            self.config(files_claim(pattern=r"(\d+)?\s*services")))
+        self.assertNotIn("Traceback", err)
+        self.assertEqual(code, 0)
+        self.assertEqual(data["claims"][0]["occorrenze"], 1)
+
+    def test_capture_that_is_not_a_number_is_unmeasurable(self):
+        self.touch(3)
+        self.write("page.md", "We run many services.\n")
+        code, data, err = self.run_json(
+            self.config(files_claim(pattern=r"(\w+) services")))
+        self.assertNotIn("Traceback", err)
+        self.assertEqual(code, 2)
+        self.assertIn("many", data["claims"][0]["motivo"])
+
+    def test_line_numbers_count_newlines_only(self):
+        # str.splitlines() also splits on form feed, U+2028 and others, so
+        # the reported line was wrong by one for each of them above it.
+        self.touch(3)
+        self.write("page.md", "intro\fpage two more\nWe run 22 services.\n")
+        code, data, _ = self.run_json(self.config(files_claim()))
+        self.assertEqual(code, 1)
+        self.assertEqual(data["claims"][0]["divergenti"][0]["riga"], 2)
+
+    def test_crlf_files_are_read(self):
+        self.touch(3)
+        Path("page.md").write_bytes(b"intro\r\nWe run 22 services.\r\n")
+        code, data, _ = self.run_json(self.config(files_claim()))
+        self.assertEqual(code, 1)
+        self.assertEqual(data["claims"][0]["divergenti"][0]["riga"], 2)
+
+    def test_lines_source_counts_newlines_only(self):
+        self.write("list.txt", "a\fb\nc\n")
+        c = countdrift.Claim("t", r"(\d+)", {"type": "lines", "file": "list.txt"}, [])
+        self.assertEqual(c.measure(), 2)
+
+    @unittest.skipIf(not hasattr(os, "geteuid") or os.geteuid() == 0,
+                     "root can read a file with mode 000")
+    def test_unreadable_file_is_unmeasurable_not_skipped(self):
+        self.touch(3)
+        self.write("a.md", "We run 22 services.\n")
+        self.write("b.md", "We run 3 services.\n")
+        os.chmod("a.md", 0)
+        try:
+            code, data, _ = self.run_json(self.config(files_claim(paths=["*.md"])))
+        finally:
+            os.chmod("a.md", 0o644)
+        self.assertEqual(code, 2)
+        self.assertIn("a.md", data["claims"][0]["motivo"])
