@@ -38,6 +38,10 @@ previous code and passes now.
   instead of raising an error that exited 1. JSON output is ASCII-escaped
   there: the same content once parsed.
 
+- `--version` printed 1.0.0 through v1.1.0 and v1.1.1: the constant was
+  never changed. A test now compares it with CITATION.cff. Both say 1.2.0,
+  prepared for the next release and not tagged.
+
 Exit codes keep their meaning. Some inputs that used to exit 0 or 1 by
 mistake now exit 2, which is what that code already meant: nothing was
 compared.
