@@ -29,10 +29,18 @@ You declare pairs: a number as it is **written**, and a command that knows the
 one is right is a decision, and decisions are not a tool's job.
 
 ```bash
+pipx install git+https://github.com/langacorp/countdrift
+countdrift claims.json
+countdrift claims.json --json
+countdrift --selftest
+```
+
+It is not published on PyPI. `pip install git+https://github.com/langacorp/countdrift`
+works too. The single file still runs on its own, with nothing installed:
+
+```bash
 curl -O https://raw.githubusercontent.com/langacorp/countdrift/main/countdrift.py
 python3 countdrift.py claims.json
-python3 countdrift.py claims.json --json
-python3 countdrift.py --selftest
 ```
 
 ```
@@ -49,6 +57,11 @@ python3 countdrift.py --selftest
 | `0` | every written number matches its source |
 | `1` | at least one has drifted |
 | `2` | **a source did not answer** — nothing was compared |
+
+Exit `2` also covers the cases where nothing could be compared for another
+reason: a claims file that cannot be read or is malformed (reported on
+stderr), and a claim whose `paths` match no file or include a file that
+cannot be read.
 
 The third one is the point. A check that could not read its source and reports
 green is worse than no check: it is a green that means *nothing was measured*.
@@ -86,13 +99,15 @@ A claims file that arrives in a pull request should never be run with
 }
 ```
 
-`pattern` needs one capture group: the number.
+`pattern` needs one capture group: the number. A pattern without one is an
+error in the claims file. `paths` is a list of globs relative to the working
+directory; each entry has to match at least one file.
 
 | `truth.type` | reads | keys |
 |---|---|---|
 | `files` | how many paths match a glob | `glob`, `directories` |
 | `lines` | how many lines of a file match | `file`, `match` |
-| `json` | a number at a dotted path | `file`, `path` |
+| `json` | a whole number at a dotted path | `file`, `path` |
 | `shell` | **runs a command** — needs `--allow-exec` | `command`, `timeout` |
 
 A plain string instead of an object still works and is treated as `shell`, so
