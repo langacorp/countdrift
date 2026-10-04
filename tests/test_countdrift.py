@@ -333,3 +333,79 @@ class ConfigErrors(InTempDir):
         Path("c.json").write_bytes(
             b"\xef\xbb\xbf" + json.dumps({"claims": [files_claim()]}).encode())
         self.assertEqual(self.run_cli("c.json")[0], 0)
+
+
+class SourceFailuresStayContained(InTempDir):
+    """
+    A source that fails is "non misurabile" for that claim only. It must not
+    crash the run, lose the other claims' results, or exit 1 (drift).
+    """
+
+    def measure(self, truth, allow_exec=False):
+        c = countdrift.Claim("t", r"(\d+)", truth, [])
+        return c.measure(allow_exec), c.why
+
+    def test_lines_invalid_match_regex(self):
+        self.write("list.txt", "a\n")
+        v, why = self.measure({"type": "lines", "file": "list.txt", "match": "["})
+        self.assertIsNone(v)
+        self.assertIn("invalid match", why)
+
+    def test_files_absolute_glob(self):
+        v, why = self.measure({"type": "files", "glob": "/tmp/*"})
+        self.assertIsNone(v)
+        self.assertIn("relative", why)
+
+    def test_json_infinity_and_nan(self):
+        self.write("d.json", '{"inf": 1e400, "nan": NaN}')
+        for key in ("inf", "nan"):
+            v, why = self.measure({"type": "json", "file": "d.json", "path": key})
+            self.assertIsNone(v, key)
+            self.assertIn("not a whole number", why)
+
+    def test_json_fraction_is_not_truncated(self):
+        # 16.7 used to become 16 and match a page that says 16.
+        self.write("d.json", '{"n": 16.7, "m": 16.0}')
+        v, why = self.measure({"type": "json", "file": "d.json", "path": "n"})
+        self.assertIsNone(v)
+        self.assertIn("not a whole number", why)
+        self.assertEqual(self.measure({"type": "json", "file": "d.json",
+                                       "path": "m"})[0], 16)
+
+    def test_json_source_with_utf8_bom(self):
+        Path("d.json").write_bytes(b'\xef\xbb\xbf{"n": 5}')
+        self.assertEqual(self.measure({"type": "json", "file": "d.json",
+                                       "path": "n"}), (5, ""))
+
+    def test_files_directories_must_be_a_boolean(self):
+        # "false" is a non-empty string, so it used to count directories.
+        self.touch(2)
+        Path("svc/d").mkdir()
+        v, why = self.measure({"type": "files", "glob": "svc/*",
+                               "directories": "false"})
+        self.assertIsNone(v)
+        self.assertIn("directories", why)
+
+    def test_shell_timeout_must_be_a_number(self):
+        v, why = self.measure({"type": "shell", "command": "echo 1",
+                               "timeout": "5"}, allow_exec=True)
+        self.assertIsNone(v)
+        self.assertIn("timeout", why)
+
+    def test_wrong_type_in_spec_is_unmeasurable(self):
+        self.write("d.json", '{"n": 5}')
+        v, why = self.measure({"type": "json", "file": "d.json", "path": 5})
+        self.assertIsNone(v)
+        self.assertTrue(why)
+
+    def test_one_bad_source_does_not_lose_the_others(self):
+        self.touch(16)
+        self.write("page.md", "We run 22 services.\n")
+        bad = {"name": "bad", "pattern": r"(\d+) services",
+               "truth": {"type": "lines", "file": "page.md", "match": "("},
+               "paths": ["page.md"]}
+        code, data, err = self.run_json(self.config(files_claim(), bad))
+        self.assertNotIn("Traceback", err)
+        self.assertEqual(code, 2)
+        self.assertEqual(data["divergenti"], 1)
+        self.assertEqual(data["non_misurabili"], 1)
