@@ -304,8 +304,12 @@ def controlla(claims, come_json=False, allow_exec=False):
 
 def _stampa(esiti, divergenti, ciechi, come_json):
     if come_json:
+        # On a console that is not UTF-8, escape non-ASCII as \uXXXX: still
+        # valid JSON with the same content, instead of an encoding error.
+        utf = (getattr(sys.stdout, "encoding", "") or "").lower().replace("-", "")
         print(json.dumps({"claims": esiti, "divergenti": divergenti,
-                          "non_misurabili": ciechi}, indent=2, ensure_ascii=False))
+                          "non_misurabili": ciechi}, indent=2,
+                         ensure_ascii=not utf.startswith("utf")))
         return 2 if ciechi else (1 if divergenti else 0)
     for e in esiti:
         if e.get("stato") == "non misurabile":
@@ -395,6 +399,12 @@ def main(argv=None):
                    help="run the built-in three-direction check and exit")
     p.add_argument("--version", action="version", version=__version__)
     a = p.parse_args(argv)
+    # A character the console cannot encode used to raise UnicodeEncodeError,
+    # which exits 1: the code for drift. Write it escaped instead.
+    try:
+        sys.stdout.reconfigure(errors="backslashreplace")
+    except (AttributeError, ValueError):
+        pass
     if a.selftest:
         return selftest()
     if not a.config:
