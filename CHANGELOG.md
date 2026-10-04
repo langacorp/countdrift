@@ -4,7 +4,7 @@ All notable changes to this project are recorded here.
 Each entry is a release. The heading carries the tag and the date the release
 was published. Work that is tagged but never released says so.
 
-## Unreleased
+## v1.2.0 — 2026-10-04
 
 Fixes. Each one was reproduced first, and each has a test that fails on the
 previous code and passes now.
