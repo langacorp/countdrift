@@ -1,6 +1,6 @@
 name: self-test
 
-# Runs the tool's own two-direction self-test on every push.
+# Runs the tool's own self-test and the unit tests on every push.
 # The point is not that it passed once: it is that it passes today.
 #
 # NO SECRETS. This workflow reads nothing but the repository itself and needs
@@ -25,20 +25,33 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python: ["3.9", "3.13"]
+        python: ["3.9", "3.11", "3.13"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python }}
 
       # A file that does not compile is a test that never ran, and from the
       # outside it looks exactly like one that passed.
       - name: Compile
-        run: python -m compileall -q countdrift.py
+        run: python -m compileall -q countdrift.py tests
 
       # Both directions: it must fire on a planted case and stay silent on a
       # clean one. A check that only ever passes proves nothing.
       - name: Self-test
         run: python countdrift.py --selftest
+
+      # Every verdict and every source in both directions, end to end in a
+      # temporary directory. Stdlib only, no network.
+      - name: Unit tests
+        run: python -m unittest discover -s tests -v
+
+      # The packaged command must be the same tool: install it and run it.
+      - name: Install and run the entry point
+        run: |
+          python -m pip install --quiet .
+          cd "$RUNNER_TEMP"
+          countdrift --version
+          countdrift --selftest
