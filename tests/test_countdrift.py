@@ -289,3 +289,47 @@ class Cli(InTempDir):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ConfigErrors(InTempDir):
+    """A claims file that cannot be used is not a drift: exit 2, no traceback."""
+
+    def assert_config_error(self, text, needle):
+        self.write("c.json", text)
+        code, out, err = self.run_cli("c.json")
+        self.assertEqual(code, 2, err)
+        self.assertNotIn("Traceback", err)
+        self.assertIn(needle, err)
+        self.assertEqual(out, "")
+
+    def test_missing_config_file(self):
+        code, _, err = self.run_cli("nope.json")
+        self.assertEqual(code, 2)
+        self.assertIn("nope.json", err)
+
+    def test_invalid_json(self):
+        self.assert_config_error("{claims: ", "not valid JSON")
+
+    def test_no_claims_list(self):
+        self.assert_config_error('{"claim": []}', "claims")
+
+    def test_missing_key(self):
+        self.assert_config_error(json.dumps({"claims": [
+            {"name": "a", "truth": {"type": "files", "glob": "*"},
+             "paths": ["x"]}]}), "pattern")
+
+    def test_invalid_regex(self):
+        self.assert_config_error(json.dumps({"claims": [
+            files_claim(pattern=r"(\d+ services")]}), "invalid pattern")
+
+    def test_unknown_source_type(self):
+        self.assert_config_error(json.dumps({"claims": [
+            {"name": "a", "pattern": r"(\d+)", "truth": {"type": "sql"},
+             "paths": ["x"]}]}), "unknown source type")
+
+    def test_config_with_utf8_bom_is_read(self):
+        self.touch(16)
+        self.write("page.md", "We run 16 services.\n")
+        Path("c.json").write_bytes(
+            b"\xef\xbb\xbf" + json.dumps({"claims": [files_claim()]}).encode())
+        self.assertEqual(self.run_cli("c.json")[0], 0)
