@@ -45,7 +45,15 @@ class ConfigError(ValueError):
 def _src_files(spec, allow_exec):
     """How many paths match a glob. Reads the filesystem, runs nothing."""
     pattern = spec["glob"]
-    only_dirs = bool(spec.get("directories", False))
+    if not isinstance(pattern, str) or not pattern:
+        raise SourceError("glob must be a non-empty string")
+    if Path(pattern).is_absolute():
+        raise SourceError("glob must be relative to the working directory: %s"
+                          % pattern)
+    only_dirs = spec.get("directories", False)
+    if not isinstance(only_dirs, bool):
+        # "false" is a non-empty string and would have meant True.
+        raise SourceError("directories must be true or false, not %r" % only_dirs)
     n = 0
     for p in Path().glob(pattern):
         if only_dirs and not p.is_dir():
@@ -61,7 +69,10 @@ def _src_lines(spec, allow_exec):
     f = Path(spec["file"])
     if not f.is_file():
         raise SourceError("file not found: %s" % f)
-    rx = re.compile(spec.get("match", ".")) if spec.get("match") else None
+    try:
+        rx = re.compile(spec["match"]) if spec.get("match") else None
+    except (re.error, TypeError) as e:
+        raise SourceError("invalid match pattern %r: %s" % (spec.get("match"), e))
     n = 0
     for line in f.read_text(encoding="utf-8", errors="replace").splitlines():
         if rx is None or rx.search(line):
@@ -75,7 +86,7 @@ def _src_json(spec, allow_exec):
     if not f.is_file():
         raise SourceError("file not found: %s" % f)
     try:
-        node = json.loads(f.read_text(encoding="utf-8"))
+        node = json.loads(f.read_text(encoding="utf-8-sig"))
     except ValueError as e:
         raise SourceError("not valid JSON: %s (%s)" % (f, e))
     for key in [k for k in spec["path"].split(".") if k]:
@@ -88,7 +99,13 @@ def _src_json(spec, allow_exec):
         return len(node)
     if isinstance(node, bool) or not isinstance(node, (int, float)):
         raise SourceError("%s is not a number" % spec["path"])
-    return int(node)
+    if isinstance(node, float):
+        # int() would turn 16.7 into 16 and call it a match; it would crash on
+        # Infinity and NaN, which json.loads accepts.
+        if not node.is_integer():
+            raise SourceError("%s is not a whole number: %r" % (spec["path"], node))
+        node = int(node)
+    return node
 
 
 def _src_shell(spec, allow_exec):
@@ -100,9 +117,14 @@ def _src_shell(spec, allow_exec):
     if not allow_exec:
         raise SourceError(
             "this claim runs a shell command; pass --allow-exec to permit it")
+    timeout = spec.get("timeout", 60)
+    if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) \
+            or timeout <= 0:
+        raise SourceError("timeout must be a positive number of seconds, not %r"
+                          % (timeout,))
     try:
         r = subprocess.run(spec["command"], shell=True,
-                           capture_output=True, timeout=spec.get("timeout", 60))
+                           capture_output=True, timeout=timeout)
     except subprocess.TimeoutExpired:
         raise SourceError("command timed out")
     if r.returncode != 0:
@@ -148,7 +170,11 @@ class Claim:
         except SourceError as e:
             self.why = str(e)
             return None
-        except (OSError, KeyError, ValueError) as e:
+        except Exception as e:
+            # Any other failure is still "the source did not answer" for this
+            # claim: reported with its type and message, exit 2. Letting it
+            # escape would crash the run, lose every other claim's result and
+            # exit 1, which is the code for drift.
             self.why = "%s: %s" % (type(e).__name__, e)
             return None
 
