@@ -38,6 +38,10 @@ class SourceError(RuntimeError):
     """The truth could not be read. Never the same as 'the number is zero'."""
 
 
+class ConfigError(ValueError):
+    """The claims file cannot be used. Nothing was compared."""
+
+
 def _src_files(spec, allow_exec):
     """How many paths match a glob. Reads the filesystem, runs nothing."""
     pattern = spec["glob"]
@@ -118,7 +122,10 @@ class Claim:
 
     def __init__(self, name, pattern, truth, paths, note=""):
         self.name = name
-        self.pattern = re.compile(pattern)
+        try:
+            self.pattern = re.compile(pattern)
+        except (re.error, TypeError) as e:
+            raise ConfigError("claim %r: invalid pattern: %s" % (name, e))
         self.paths = paths
         self.note = note
         self.why = ""
@@ -127,8 +134,12 @@ class Claim:
         # become a way to run things.
         self.truth = ({"type": "shell", "command": truth}
                       if isinstance(truth, str) else truth)
+        if not isinstance(self.truth, dict):
+            raise ConfigError("claim %r: truth must be an object or a string"
+                              % name)
         if self.truth.get("type") not in SOURCES:
-            raise SourceError("unknown source type: %r" % self.truth.get("type"))
+            raise ConfigError("claim %r: unknown source type: %r"
+                              % (name, self.truth.get("type")))
 
     def measure(self, allow_exec=False):
         """The true number, or None when it could not be read at all."""
@@ -161,9 +172,30 @@ class Claim:
 
 
 def carica(config):
-    dati = json.loads(config.read_text(encoding="utf-8"))
-    return [Claim(c["name"], c["pattern"], c["truth"], c["paths"], c.get("note", ""))
-            for c in dati["claims"]]
+    """
+    Read the claims file. Anything wrong with it is a ConfigError: a file that
+    cannot be read must not look like a drift (exit 1) or a crash.
+    """
+    try:
+        testo = config.read_text(encoding="utf-8-sig")
+    except (OSError, UnicodeDecodeError) as e:
+        raise ConfigError("cannot read %s: %s" % (config, e))
+    try:
+        dati = json.loads(testo)
+    except ValueError as e:
+        raise ConfigError("not valid JSON: %s (%s)" % (config, e))
+    if not isinstance(dati, dict) or not isinstance(dati.get("claims"), list):
+        raise ConfigError('%s: expected an object with a "claims" list' % config)
+    claims = []
+    for i, c in enumerate(dati["claims"]):
+        if not isinstance(c, dict):
+            raise ConfigError("claim #%d is not an object" % (i + 1))
+        for key in ("name", "pattern", "truth", "paths"):
+            if key not in c:
+                raise ConfigError("claim #%d: missing key %r" % (i + 1, key))
+        claims.append(Claim(c["name"], c["pattern"], c["truth"], c["paths"],
+                            c.get("note", "")))
+    return claims
 
 
 def controlla(claims, come_json=False, allow_exec=False):
@@ -283,7 +315,13 @@ def main(argv=None):
         return selftest()
     if not a.config:
         p.error("serve un file di configurazione, oppure --selftest")
-    return controlla(carica(Path(a.config)), a.json, a.allow_exec)
+    try:
+        claims = carica(Path(a.config))
+    except ConfigError as e:
+        # Exit 2, like a source that did not answer: nothing was compared.
+        print("countdrift: %s" % e, file=sys.stderr)
+        return 2
+    return controlla(claims, a.json, a.allow_exec)
 
 
 if __name__ == "__main__":
