@@ -508,3 +508,40 @@ class WrittenSide(InTempDir):
             os.chmod("a.md", 0o644)
         self.assertEqual(code, 2)
         self.assertIn("a.md", data["claims"][0]["motivo"])
+
+
+class Output(InTempDir):
+
+    def run_subprocess(self, *argv, encoding="ascii"):
+        import subprocess
+        env = dict(os.environ, PYTHONIOENCODING=encoding)
+        return subprocess.run([sys.executable, str(ROOT / "countdrift.py")]
+                              + list(argv), capture_output=True, env=env)
+
+    def test_narrow_console_encoding_does_not_turn_ok_into_drift(self):
+        # A claim name or a line the console cannot encode used to raise
+        # UnicodeEncodeError, which exits 1: the code for drift.
+        self.touch(3)
+        self.write("page.md", "Offriamo 3 servizi — 服务\n")
+        claim = files_claim(name="servizi — 服务",
+                            pattern=r"(\d+) servizi")
+        cfg = self.config(claim)
+        for extra in ((), ("--json",)):
+            r = self.run_subprocess(cfg, *extra)
+            self.assertEqual(r.returncode, 0, r.stderr.decode())
+            self.assertNotIn(b"Traceback", r.stderr)
+
+    def test_narrow_console_still_reports_drift_with_the_line(self):
+        self.touch(3)
+        self.write("page.md", "Offriamo 22 servizi — tutti\n")
+        r = self.run_subprocess(self.config(files_claim(pattern=r"(\d+) servizi")))
+        self.assertEqual(r.returncode, 1, r.stderr.decode())
+        self.assertIn(b"page.md:1 dice 22", r.stdout)
+
+    def test_json_output_keeps_non_ascii_on_a_utf8_console(self):
+        self.touch(3)
+        self.write("page.md", "Offriamo 22 servizi — tutti\n")
+        r = self.run_subprocess(self.config(files_claim(pattern=r"(\d+) servizi")),
+                                "--json", encoding="utf-8")
+        data = json.loads(r.stdout.decode("utf-8"))
+        self.assertIn("—", data["claims"][0]["divergenti"][0]["contesto"])
