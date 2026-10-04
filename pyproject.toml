@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "countdrift"
+dynamic = ["version"]
+description = "Find numbers written by hand that no longer match their source."
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "LANGA Corp. Srl" }]
+requires-python = ">=3.9"
+dependencies = []
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Environment :: Console",
+]
+
+[project.urls]
+Homepage = "https://github.com/langacorp/countdrift"
+Source = "https://github.com/langacorp/countdrift"
+Changelog = "https://github.com/langacorp/countdrift/blob/main/CHANGELOG.md"
+
+[project.scripts]
+countdrift = "countdrift:main"
+
+[tool.setuptools]
+py-modules = ["countdrift"]
+
+[tool.setuptools.dynamic]
+version = { attr = "countdrift.__version__" }
