@@ -42,6 +42,19 @@ class ConfigError(ValueError):
     """The claims file cannot be used. Nothing was compared."""
 
 
+def _righe(testo):
+    """
+    The lines of a text, split on newlines only. Path.read_text() already
+    turns \r\n and \r into \n. str.splitlines() would also split on form
+    feed, U+2028 and other separators, which miscounts lines and shifts every
+    line number reported below them.
+    """
+    righe = testo.split("\n")
+    if righe and righe[-1] == "":
+        righe.pop()
+    return righe
+
+
 def _src_files(spec, allow_exec):
     """How many paths match a glob. Reads the filesystem, runs nothing."""
     pattern = spec["glob"]
@@ -74,7 +87,7 @@ def _src_lines(spec, allow_exec):
     except (re.error, TypeError) as e:
         raise SourceError("invalid match pattern %r: %s" % (spec.get("match"), e))
     n = 0
-    for line in f.read_text(encoding="utf-8", errors="replace").splitlines():
+    for line in _righe(f.read_text(encoding="utf-8", errors="replace")):
         if rx is None or rx.search(line):
             n += 1
     return n
@@ -148,6 +161,11 @@ class Claim:
             self.pattern = re.compile(pattern)
         except (re.error, TypeError) as e:
             raise ConfigError("claim %r: invalid pattern: %s" % (name, e))
+        if self.pattern.groups < 1:
+            # Without a group there is no number to read: every line would be
+            # skipped and the claim would report OK, written in 0 places.
+            raise ConfigError("claim %r: pattern needs one capture group "
+                              "around the number" % name)
         self.paths = paths
         self.note = note
         self.why = ""
@@ -179,21 +197,45 @@ class Claim:
             return None
 
     def written(self) -> list[tuple[Path, int, int, str]]:
-        """Every place the number is written. (file, line, value, context)"""
-        trovati = []
+        """
+        Every place the number is written. (file, line, value, context)
+
+        Raises SourceError when the written side cannot be read in full: a
+        paths entry that matches no file, a file that cannot be read, or a
+        capture that is not a number. Each of those used to be skipped, and
+        a claim with nothing to compare reported OK.
+        """
+        trovati, visti = [], set()
         for p in self.paths:
+            corrisponde = False
             for f in sorted(Path().glob(p)):
                 if not f.is_file():
                     continue
+                corrisponde = True
+                chiave = f.resolve()
+                if chiave in visti:
+                    # Two entries in "paths" can match the same file; it is
+                    # still one place where the number is written.
+                    continue
+                visti.add(chiave)
                 try:
                     testo = f.read_text(encoding="utf-8", errors="replace")
-                except OSError:
-                    continue
-                for n, riga in enumerate(testo.splitlines(), 1):
+                except OSError as e:
+                    raise SourceError("cannot read %s: %s" % (f, e))
+                for n, riga in enumerate(_righe(testo), 1):
                     for m in self.pattern.finditer(riga):
-                        if not m.groups():
+                        v = m.group(1)
+                        if v is None:
                             continue
-                        trovati.append((f, n, int(m.group(1)), riga.strip()[:90]))
+                        try:
+                            valore = int(v)
+                        except ValueError:
+                            raise SourceError(
+                                "%s:%d: pattern captured %r, which is not a "
+                                "whole number" % (f, n, v))
+                        trovati.append((f, n, valore, riga.strip()[:90]))
+            if not corrisponde:
+                raise SourceError("paths entry matches no file: %s" % p)
         return trovati
 
 
@@ -219,6 +261,14 @@ def carica(config):
         for key in ("name", "pattern", "truth", "paths"):
             if key not in c:
                 raise ConfigError("claim #%d: missing key %r" % (i + 1, key))
+        paths = c["paths"]
+        if not isinstance(paths, list) or not paths or not all(
+                isinstance(x, str) and x and not Path(x).is_absolute()
+                for x in paths):
+            # A bare string used to be globbed character by character.
+            raise ConfigError("claim %r: paths must be a non-empty list of "
+                              "globs relative to the working directory"
+                              % c["name"])
         claims.append(Claim(c["name"], c["pattern"], c["truth"], c["paths"],
                             c.get("note", "")))
     return claims
@@ -228,7 +278,15 @@ def controlla(claims, come_json=False, allow_exec=False):
     esiti, divergenti, ciechi = [], 0, 0
     for c in claims:
         vero = c.measure(allow_exec)
-        punti = c.written()
+        try:
+            punti = c.written()
+        except SourceError as e:
+            # The written side could not be read in full: comparing what was
+            # read would be a partial answer presented as a whole one.
+            ciechi += 1
+            esiti.append({"claim": c.name, "stato": "non misurabile",
+                          "motivo": c.why or str(e), "scritto_in": 0})
+            continue
         if vero is None:
             ciechi += 1
             esiti.append({"claim": c.name, "stato": "non misurabile",
